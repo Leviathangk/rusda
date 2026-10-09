@@ -14,7 +14,7 @@
 
 ## 下载
 
-到 [Releases](https://github.com/taisuii/rusda/releases) 下载，每个版本都带 `server` / `inject` / `gadget` 的四个架构（`arm` / `arm64` / `x86` / `x86_64`）。
+到 [Releases](https://github.com/taisuii/rusda/releases) 下载。下表是 Android 版本，每版包含 `server` / `inject` / `gadget` 的四个架构（`arm` / `arm64` / `x86` / `x86_64`）。
 
 | 版本 | 适用 | 编译所需 NDK |
 | --- | --- | --- |
@@ -26,6 +26,8 @@
 | [16.2.1](https://github.com/taisuii/rusda/releases/tag/16.2.1) | 老机型 / 低版本 Android | r25 |
 
 产物沿用官方命名：`rusda-{server,inject,gadget}-<版本>-android-<架构>(.so).xz`。下载后 `xz -d` 解压，用法和官方 frida 一模一样，把 `frida-server` 换成 `rusda-server` 推到 `/data/local/tmp` 跑起来即可。
+
+iOS 17.23.1 的 [实验性构建](https://github.com/taisuii/rusda/releases/tag/17.23.1-ios.1) 包含 arm64 `server` / `inject` 和 arm64 + arm64e `gadget`。目前只通过编译、签名和静态检查，尚未完成 iOS 真机运行测试；构建与签名说明见 [iOS README](17.23.1/ios/README.md)。
 
 ## 它改了什么，为什么这么改
 
@@ -51,7 +53,7 @@ rusda 分三层把这些尽量抹掉，同时不动 frida 的功能、也不破�
 | `frida:rpc` 改成运行时拼接 | `lib/base/rpc.vala` | RPC 标识留明文等于自报家门，改成运行时再拼 |
 | 各种 `frida-*` 线程名改成运行时 XOR 解码 | `agent.vala`、`p2p.vala`、`gadget.vala` | 线程名能被 `comm` 直接枚举 |
 | memfd 名 → `jit-cache` | `lib/base/linux.vala`（17.6.2）、`frida-helper-backend.vala`（16.x / 16.7） | 避免 `maps` 里露出 `memfd:frida-agent` |
-| `frida_agent_main` → `main` | 各 `*-host-session.vala`、`agent-container.vala` | 符号 / 入口检测 |
+| `frida_agent_main` → `main`（iOS 为 `rusda_agent_main`） | 各 `*-host-session.vala`、`agent-container.vala` | 符号 / 入口检测 |
 | `g_set_prgname("frida")` → `"russell"` | `gum/gum.c`、`src/frida-glue.c` | 进程名 |
 
 能在源码解决的就在源码解决；像线程名、rpc 这种改成运行时拼，二进制里压根不出现明文。
@@ -76,7 +78,7 @@ rusda 分三层把这些尽量抹掉，同时不动 frida 的功能、也不破�
 - **为什么是「等长反转 / 替换」而不是删掉或乱改**：ELF 里这些字符串的偏移、重定位都是定死的，只要保证长度不变就不会动布局，二进制照常能跑。反转既等长，又让 `strings` 和内存扫描匹配不到原串。
 - **为什么放二进制层而不是全堆源码里**：库内部和 Vala 生成的类型名在源码里改工程量大、容易漏，还可能破坏 GObject 类型注册。链接后统一 patch 最稳、覆盖也最全。
 
-## 自己编译
+## 自己编译 Android
 
 环境：Linux（或 WSL）、Node 22、对应版本的 NDK、`pip install lief`。以 17.23.1 为例：
 
@@ -143,7 +145,8 @@ frida -U -f 包名
 rusda/
 ├── 16.2.1/ 16.7.19/ 17.6.2/ 17.14.1/ 17.15.0/ 17.23.1/   # 按版本分目录
 │   ├── patches/deliver/                    # superrepo / frida-core / frida-gum 补丁 + README
-│   └── tools/                              # build-android-all.sh、verify-patch.py
+│   ├── tools/                              # build-android-all.sh、verify-patch.py
+│   └── ios/                                # 17.23.1 iOS 增量补丁、验证脚本与说明
 └── README.md
 ```
 

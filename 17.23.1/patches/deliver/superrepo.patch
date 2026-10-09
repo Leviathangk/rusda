@@ -8,18 +8,6 @@ index b956017..194cc95 100644
  /subprojects/*
 +/build-android-*/
 +/dist-android/
-diff --git a/subprojects/frida-core b/subprojects/frida-core
---- a/subprojects/frida-core
-+++ b/subprojects/frida-core
-@@ -1 +1 @@
--Subproject commit 95b9cd3bae7beb02bd4e1182c7173538bb44ceab
-+Subproject commit 95b9cd3bae7beb02bd4e1182c7173538bb44ceab-dirty
-diff --git a/subprojects/frida-gum b/subprojects/frida-gum
---- a/subprojects/frida-gum
-+++ b/subprojects/frida-gum
-@@ -1 +1 @@
--Subproject commit f732b010902e0fe7724f82bd1590e7a79f42463e
-+Subproject commit f732b010902e0fe7724f82bd1590e7a79f42463e-dirty
 diff --git a/tools/build-android-all.sh b/tools/build-android-all.sh
 new file mode 100755
 index 0000000..c18f2f2

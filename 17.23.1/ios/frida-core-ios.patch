@@ -1,0 +1,177 @@
+diff --git a/src/agent-container.vala b/src/agent-container.vala
+index 86eb9f4..1cedcb7 100644
+--- a/src/agent-container.vala
++++ b/src/agent-container.vala
+@@ -28,7 +28,11 @@ namespace Frida {
+ 			}
+ 
+ 			void * main_func_symbol;
++#if IOS
++			var main_func_found = container.module.symbol ("rusda_agent_main", out main_func_symbol);
++#else
+ 			var main_func_found = container.module.symbol ("main", out main_func_symbol);
++#endif
+ 			assert (main_func_found);
+ 			container.main_impl = (AgentMainFunc) main_func_symbol;
+ 
+diff --git a/src/darwin/darwin-host-session.vala b/src/darwin/darwin-host-session.vala
+index d712a56..fb8314a 100644
+--- a/src/darwin/darwin-host-session.vala
++++ b/src/darwin/darwin-host-session.vala
+@@ -320,7 +320,11 @@ namespace Frida {
+ 		private async uint inject_agent (uint pid, string agent_parameters, Cancellable? cancellable) throws Error, IOError {
+ 			uint id;
+ 
++#if IOS
++			unowned string entrypoint = "rusda_agent_main";
++#else
+ 			unowned string entrypoint = "main";
++#endif
+ #if HAVE_EMBEDDED_ASSETS
+ 			id = yield fruitjector.inject_library_resource (pid, agent, entrypoint, agent_parameters, cancellable);
+ #else
+diff --git a/src/topatch-macho.py b/src/topatch-macho.py
+new file mode 100644
+index 0000000..ff87325
+--- /dev/null
++++ b/src/topatch-macho.py
+@@ -0,0 +1,114 @@
++#!/usr/bin/env python3
++"""Apply equal-length rusda fingerprint changes to a thin 64-bit Mach-O.
++
++Run before codesign. This intentionally leaves protocol identifiers intact.
++"""
++
++from pathlib import Path
++import struct
++import sys
++
++
++MAGIC_64_LE = b"\xcf\xfa\xed\xfe"
++LC_SEGMENT_64 = 0x19
++STRING_SECTIONS = {"__cstring", "__const"}
++
++STRING_PATCHES = {
++    b"FridaScriptEngine": b"enignEtpircSadirF",
++    b"GLib-GIO": b"OIG-biLG",
++    b"GDBusProxy": b"yxorPsuBDG",
++    b"GumScript": b"tpircSmuG",
++    b"gum-js-loop": b"russellloop",
++    b"gmain": b"rmain",
++    b"gdbus": b"rubus",
++}
++
++WHOLE_FILE_PATCHES = {
++    b"frida_agent_main": b"rusda_agent_main",
++    b"libfrida-gadget-raw": b"librusda-gadget-raw",
++    b"libfrida-agent-raw": b"librusda-agent-raw",
++}
++
++
++def name_at(data: bytes, offset: int) -> str:
++    return data[offset:offset + 16].split(b"\0", 1)[0].decode("ascii")
++
++
++def ranges(data: bytes) -> tuple[list[tuple[str, int, int]], tuple[int, int] | None]:
++    if data[:4] != MAGIC_64_LE:
++        raise ValueError("Expected a thin little-endian 64-bit Mach-O")
++    if len(data) < 32:
++        raise ValueError("Truncated Mach-O header")
++
++    ncmds, sizeofcmds = struct.unpack_from("<II", data, 16)
++    if 32 + sizeofcmds > len(data):
++        raise ValueError("Truncated Mach-O load commands")
++    sections = []
++    linkedit = None
++    cursor = 32
++    for _ in range(ncmds):
++        cmd, cmdsize = struct.unpack_from("<II", data, cursor)
++        if cmdsize < 8 or cursor + cmdsize > 32 + sizeofcmds:
++            raise ValueError("Invalid Mach-O load command")
++        if cmd == LC_SEGMENT_64:
++            if cmdsize < 72:
++                raise ValueError("Invalid Mach-O segment")
++            segment = name_at(data, cursor + 8)
++            fileoff, filesize = struct.unpack_from("<QQ", data, cursor + 40)
++            nsects = struct.unpack_from("<I", data, cursor + 64)[0]
++            if cmdsize < 72 + 80 * nsects:
++                raise ValueError("Truncated Mach-O sections")
++            if segment == "__LINKEDIT" and filesize:
++                linkedit = (fileoff, fileoff + filesize)
++            for i in range(nsects):
++                section_cursor = cursor + 72 + 80 * i
++                section = name_at(data, section_cursor)
++                size = struct.unpack_from("<Q", data, section_cursor + 40)[0]
++                offset = struct.unpack_from("<I", data, section_cursor + 48)[0]
++                if section in STRING_SECTIONS and size:
++                    sections.append((section, offset, offset + size))
++        cursor += cmdsize
++
++    for _, start, end in sections:
++        if end > len(data):
++            raise ValueError("Mach-O section extends past file")
++    if linkedit is not None and linkedit[1] > len(data):
++        raise ValueError("Mach-O LINKEDIT extends past file")
++    if not sections:
++        raise ValueError("No Mach-O string sections found")
++    return sections, linkedit
++
++
++def patch(path: Path) -> None:
++    data = bytearray(path.read_bytes())
++    sections, linkedit = ranges(data)
++    counts = {old.decode("ascii"): 0 for old in (*STRING_PATCHES, *WHOLE_FILE_PATCHES)}
++
++    for _, start, end in sections:
++        content = bytes(data[start:end])
++        for old, new in STRING_PATCHES.items():
++            if len(old) != len(new):
++                raise ValueError(f"Non-equal-length patch: {old!r}")
++            counts[old.decode("ascii")] += content.count(old)
++            content = content.replace(old, new)
++        data[start:end] = content
++
++    for old, new in WHOLE_FILE_PATCHES.items():
++        if len(old) != len(new):
++            raise ValueError(f"Non-equal-length patch: {old!r}")
++        counts[old.decode("ascii")] += data.count(old)
++        data[:] = data.replace(old, new)
++
++    if linkedit is not None:
++        start, end = linkedit
++        content = bytes(data[start:end]).replace(b"frida", b"rusda").replace(b"FRIDA", b"RUSDA")
++        data[start:end] = content
++
++    path.write_bytes(data)
++    print(f"[*] Mach-O rusda patch: {path}: " + ", ".join(f"{key}={value}" for key, value in counts.items()))
++
++
++if __name__ == "__main__":
++    if len(sys.argv) != 2:
++        raise SystemExit("Usage: topatch-macho.py FILE")
++    patch(Path(sys.argv[1]))
+diff --git a/tools/post-process.py b/tools/post-process.py
+index c057da2..5c3f60f 100644
+--- a/tools/post-process.py
++++ b/tools/post-process.py
+@@ -55,6 +55,10 @@ def main(argv):
+             if kind == "shared-library":
+                 subprocess.run(install_name_tool + ["-id", identity, intermediate_path], **run_kwargs)
+ 
++            if host_os == "ios":
++                topatch = Path(__file__).resolve().parent.parent / "src" / "topatch-macho.py"
++                subprocess.run([sys.executable, str(topatch), str(intermediate_path)], check=True)
++
+             codesign_args = ["-f", "-s", certid]
+             if kind == "executable":
+                 if host_os == "macos":
+@@ -76,7 +80,8 @@ def main(argv):
+                 subprocess.run([sys.executable, str(topatch), str(intermediate_path)], check=True)
+     except subprocess.CalledProcessError as e:
+         print(e, file=sys.stderr)
+-        print("Output:\n\t| " + "\n\t| ".join(e.output.strip().split("\n")), file=sys.stderr)
++        if e.output:
++            print("Output:\n\t| " + "\n\t| ".join(e.output.strip().split("\n")), file=sys.stderr)
+         sys.exit(1)
+ 
+     shutil.move(intermediate_path, output_path)
