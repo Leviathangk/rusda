@@ -18,7 +18,8 @@
 
 | 版本 | 适用 | 编译所需 NDK |
 | --- | --- | --- |
-| [17.15.0](https://github.com/taisuii/rusda/releases/tag/17.15.0) | 最新版，特性最全 | r29 |
+| [17.23.1](https://github.com/taisuii/rusda/releases/tag/17.23.1) | 最新版 | r29 |
+| [17.15.0](https://github.com/taisuii/rusda/releases/tag/17.15.0) | 17.15 线，已有真机测试记录 | r29 |
 | [17.14.1](https://github.com/taisuii/rusda/releases/tag/17.14.1) | 17.14 线 | r29 |
 | [17.6.2](https://github.com/taisuii/rusda/releases/tag/17.6.2) | 稳定版 | r25 |
 | [16.7.19](https://github.com/taisuii/rusda/releases/tag/16.7.19) | 16.7 线 | r25 |
@@ -77,15 +78,15 @@ rusda 分三层把这些尽量抹掉，同时不动 frida 的功能、也不破�
 
 ## 自己编译
 
-环境：Linux（或 WSL）、Node 22、对应版本的 NDK、`pip install lief`。以 17.6.2 为例：
+环境：Linux（或 WSL）、Node 22、对应版本的 NDK、`pip install lief`。以 17.23.1 为例：
 
 ```bash
 # 假设本仓库在 ~/rusda
-RUSDA=~/rusda/17.6.2
+RUSDA=~/rusda/17.23.1
 
 # 1. 拉官方源码（注意 tag 和子模块）
-git clone --recurse-submodules -b 17.6.2 https://github.com/frida/frida frida17.6.2
-cd frida17.6.2
+git clone --recurse-submodules -b 17.23.1 https://github.com/frida/frida frida17.23.1
+cd frida17.23.1
 
 # 2. 打补丁
 git apply --exclude=releng "$RUSDA/patches/deliver/superrepo.patch"
@@ -93,7 +94,7 @@ git apply --exclude=releng "$RUSDA/patches/deliver/superrepo.patch"
 ( cd subprojects/frida-gum  && git apply "$RUSDA/patches/deliver/frida-gum.patch" )
 
 # 3. 编译四架构
-export ANDROID_NDK_ROOT=<你的 NDK 路径>      # 版本对应见上面的表
+export ANDROID_NDK_ROOT=/path/to/android-ndk-r29
 ./tools/build-android-all.sh
 
 # 4. 自检
@@ -108,7 +109,7 @@ python "$RUSDA/tools/verify-patch.py" dist-android
 
 - 每个产物的 ELF 架构和文件名一致（防止 64 位构建误打成 32 位）；
 - 7 个关键特征串（`FridaScriptEngine` / `GumScript` / `GLib-GIO` / `GDBusProxy` / `gum-js-loop` / `gmain` / `gdbus`）已清零；
-- 反转后的串都在。
+- 列出产物中找到的反转串，方便核对二进制补丁的覆盖情况。
 
 加 `--paranoid` 会把剩余的 frida/gum 残留也算失败，用来评估魔改深度。
 
@@ -140,7 +141,7 @@ frida -U -f 包名
 
 ```
 rusda/
-├── 16.2.1/ 16.7.19/ 17.6.2/ 17.14.1/ 17.15.0/   # 按版本分目录
+├── 16.2.1/ 16.7.19/ 17.6.2/ 17.14.1/ 17.15.0/ 17.23.1/   # 按版本分目录
 │   ├── patches/deliver/                    # superrepo / frida-core / frida-gum 补丁 + README
 │   └── tools/                              # build-android-all.sh、verify-patch.py
 └── README.md
